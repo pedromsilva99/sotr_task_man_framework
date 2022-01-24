@@ -55,6 +55,8 @@ SemaphoreHandle_t sem1;
 SemaphoreHandle_t sem2;
 float res; // Sampled volatge
 float proc_out; //Value that is processed in proc task
+int tick;
+int tman_tick=0;
 
 typedef struct{
     int period;
@@ -70,17 +72,26 @@ typedef struct{
     TASK tasks [MAX_TASKS];
 }TMAN;
 
+void simulate(void *pvParam) {
+    TickType_t time = xTaskGetTickCount();
+    
+    for(;;) {
+        tman_tick++;
+        printf("%d ticks\n", tman_tick);
+        vTaskDelayUntil(&time, tick);   
+    }
+}
+
 TMAN TMAN_Init(int ticks_tman){
     
     TMAN tm;
-    
-    //tm.tasks = calloc(maxTasks, sizeof(int)); //https://stackoverflow.com/questions/35801119/c-struct-with-array-size-determined-at-compile-time
     tm.nTasksCreated=0;
     tm.nTasksDeleted=0;
     tm.nTasksActive=0;
-    tm.tick_period = ticks_tman / portTICK_RATE_MS;
+    tick = ticks_tman;
     tm.maxTasks=MAX_TASKS;
     tm.taskId=0;
+    xTaskCreate( simulate, ( const signed char * const ) "ticking", configMINIMAL_STACK_SIZE, NULL, ACQ_PRIORITY, NULL );
     
     return tm;
 }
@@ -133,16 +144,7 @@ TMAN TMAN_TaskWaitPeriod(TMAN t, int task_period) {
     return t;
 }
 
-void simulate(int period) {
-    TickType_t time = xTaskGetTickCount();
-    
-    for(;;) {
-        printf("%d\n", time);
-        printf("3 em 2 segundos\n");
-        vTaskDelayUntil(&time, 2000);
-        
-    }
-}
+
 
 // phase is the offset, add state (blocked ...)
 TMAN TMAN_TaskRegisterAttributes(TMAN t, int period, int phase, int deadline, char *namec){//}, uint8_t *precedences){
@@ -212,7 +214,7 @@ int mainSetrLedBlink( void )
     printf("Initiate Task\n");
     
     
-    xTaskCreate( simulate, ( const signed char * const ) tm.tasks[0].name, configMINIMAL_STACK_SIZE, NULL, ACQ_PRIORITY, NULL );
+    
     
     
     vTaskStartScheduler();
