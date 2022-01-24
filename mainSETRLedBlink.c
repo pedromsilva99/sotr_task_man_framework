@@ -24,7 +24,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-
+#include <assert.h>
 #include <xc.h>
 
 /* Kernel includes. */
@@ -50,7 +50,6 @@
 #define MAX_TASKS 5
 
 
-
 // Variable declarations;
 SemaphoreHandle_t sem1;
 SemaphoreHandle_t sem2;
@@ -66,18 +65,20 @@ typedef struct{
 }TASK;
 
 typedef struct{
-    int nTasksCreated, nTasksDeleted, nTasksActive, nTicks, taskId, maxTasks;
+    int nTasksCreated, nTasksDeleted, nTasksActive, tick_period, taskId, maxTasks;
+    
     TASK tasks [MAX_TASKS];
 }TMAN;
 
 TMAN TMAN_Init(int ticks_tman){
     
     TMAN tm;
+    
     //tm.tasks = calloc(maxTasks, sizeof(int)); //https://stackoverflow.com/questions/35801119/c-struct-with-array-size-determined-at-compile-time
     tm.nTasksCreated=0;
     tm.nTasksDeleted=0;
     tm.nTasksActive=0;
-    tm.nTicks=0;
+    tm.tick_period = ticks_tman / portTICK_RATE_MS;
     tm.maxTasks=MAX_TASKS;
     tm.taskId=0;
     
@@ -89,7 +90,7 @@ TMAN TMAN_Close(TMAN t){
     t.nTasksCreated=0;
     t.nTasksDeleted=0;
     t.nTasksActive=0;
-    t.nTicks=0;
+    t.tick_period=0;
     t.taskId=0;
     return t;
 }
@@ -121,8 +122,32 @@ TMAN TMAN_TaskDelete(TMAN t, char *namec){
     return t;
 }
 
-TMAN TMAN_TaskRegisterAttributes(TMAN t, int period, int phase, int deadline, char *namec){//}, uint8_t *precedences){
+TMAN TMAN_TaskWaitPeriod(TMAN t, int task_period) {
+    TickType_t time = xTaskGetTickCount();
     
+    for(;;) {
+        printf("2 em 2 segundos\n");
+        vTaskDelayUntil(&time, t.tick_period * task_period);
+    }
+    
+    return t;
+}
+
+void simulate(int period) {
+    TickType_t time = xTaskGetTickCount();
+    
+    for(;;) {
+        printf("%d\n", time);
+        printf("3 em 2 segundos\n");
+        vTaskDelayUntil(&time, 2000);
+        
+    }
+}
+
+// phase is the offset, add state (blocked ...)
+TMAN TMAN_TaskRegisterAttributes(TMAN t, int period, int phase, int deadline, char *namec){//}, uint8_t *precedences){
+    assert(period > phase);
+    assert(deadline > phase);
     for(int i = 0; i<t.maxTasks;i++){
         if (strcmp(namec, t.tasks[i].name) == 0){
             t.tasks[i].period=period;
@@ -149,37 +174,51 @@ void uart(void){
 
 void acq(void *pvParam)
 { 
-    TickType_t time = xTaskGetTickCount();
-  
-    uart();           
-
-    TMAN tm = TMAN_Init(0);
-    TASK task1 = {80,90,12};
-    char *name = "Task_1";
-    char *name2 = "Task_2";
     
-    tm=TMAN_TaskAdd(tm, name);
-    tm=TMAN_TaskAdd(tm, name2);
-    
-    printf("Task added\n");
-    tm=TMAN_TaskRegisterAttributes(tm,30,40,50,"Task_1");
-    printf("Attr added\n");
-    
-    printf("%d,%d\n", task1.period, task1.deadline);
-    printf("%d,%d,%s,%d,%d\n", tm.maxTasks, tm.nTasksCreated, tm.tasks[0].name, tm.tasks[0].period, tm.tasks[0].phase);
-    tm=TMAN_TaskDelete(tm,name2);
-    printf("%d,%d,%s,%d,%d\n", tm.maxTasks, tm.nTasksCreated, tm.tasks[1].name, tm.tasks[1].period, tm.tasks[1].phase);
-        
 }
 
 
 int mainSetrLedBlink( void )
 {
     /* Create the tasks defined within this file. */
-	xTaskCreate( acq, ( const signed char * const ) "acq", configMINIMAL_STACK_SIZE, NULL, ACQ_PRIORITY, NULL );
+	//xTaskCreate( acq, ( const signed char * const ) "acq", configMINIMAL_STACK_SIZE, NULL, ACQ_PRIORITY, NULL );
 
     /* Finally start the scheduler. */
-	vTaskStartScheduler();
+	
+    
+    uart();           
+
+    TMAN tm = TMAN_Init(1000);
+    TASK task1 = {80,90,12};
+    char *name = "Task_1";
+    char *name2 = "Task_2";
+    printf("\n\nStarting simulation\n");
+    tm=TMAN_TaskAdd(tm, name);
+    tm=TMAN_TaskAdd(tm, name2);
+    
+    printf("Task added\n");
+    tm=TMAN_TaskRegisterAttributes(tm, 3, 2, 5,"Task_1");
+    printf("Attr added\n");
+    
+    // printf("%d,%d\n", task1.period, task1.deadline);
+    printf("%s: Period: %d, Phase: %d\n", tm.tasks[0].name, tm.tasks[0].period, tm.tasks[0].phase);
+    tm=TMAN_TaskDelete(tm,name2);
+    printf("%s: Period: %d, Phase: %d\n", tm.tasks[1].name, tm.tasks[1].period, tm.tasks[1].phase);
+        
+    
+    printf("Tick period of TMAN: %d ms\n", tm.tick_period);
+    
+
+    printf("Initiate Task\n");
+    
+    
+    xTaskCreate( simulate, ( const signed char * const ) tm.tasks[0].name, configMINIMAL_STACK_SIZE, NULL, ACQ_PRIORITY, NULL );
+    
+    
+    vTaskStartScheduler();
+    
+    //TMAN_TaskWaitPeriod(tm, tm.tasks[0].period);
+    printf("End Task\n");
     
 	return 0;
 }
