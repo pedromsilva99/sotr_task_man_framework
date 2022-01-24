@@ -124,13 +124,14 @@ TMAN TMAN_TaskDelete(TMAN t, char *namec){
 TMAN TMAN_TaskRegisterAttributes(TMAN t, int period, int phase, int deadline, char *namec){//}, uint8_t *precedences){
     
     for(int i = 0; i<t.maxTasks;i++){
-        if (strcmp(namec, t.tasks[i].name)==0){
+        if (strcmp(namec, t.tasks[i].name) == 0){
             t.tasks[i].period=period;
             t.tasks[i].deadline=deadline;
             t.tasks[i].phase=phase;
             break;
         }
     }
+    
     return t;
 }
 
@@ -154,14 +155,16 @@ void acq(void *pvParam)
 
     TMAN tm = TMAN_Init(0);
     TASK task1 = {80,90,12};
-    printf("Adicionou a task\n");
     char *name = "Task_1";
     char *name2 = "Task_2";
     
     tm=TMAN_TaskAdd(tm, name);
-    
     tm=TMAN_TaskAdd(tm, name2);
-    tm=TMAN_TaskRegisterAttributes(tm,30,40,50,"U2");
+    
+    printf("Task added\n");
+    tm=TMAN_TaskRegisterAttributes(tm,30,40,50,"Task_1");
+    printf("Attr added\n");
+    
     printf("%d,%d\n", task1.period, task1.deadline);
     printf("%d,%d,%s,%d,%d\n", tm.maxTasks, tm.nTasksCreated, tm.tasks[0].name, tm.tasks[0].period, tm.tasks[0].phase);
     tm=TMAN_TaskDelete(tm,name2);
@@ -170,7 +173,7 @@ void acq(void *pvParam)
 }
 
 
-int mainTMAN( void )
+int mainSetrLedBlink( void )
 {
     /* Create the tasks defined within this file. */
 	xTaskCreate( acq, ( const signed char * const ) "acq", configMINIMAL_STACK_SIZE, NULL, ACQ_PRIORITY, NULL );

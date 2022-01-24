@@ -1,7 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
- 
+
+#define MAX_TASKS 5
+
 typedef struct{
     int period;
     int deadline;
@@ -12,24 +14,24 @@ typedef struct{
 
 typedef struct{
     int nTasksCreated, nTasksDeleted, nTasksActive, nTicks, taskId, maxTasks;
-    TASK * tasks;
+    TASK tasks [MAX_TASKS];
 }TMAN;
 
-TMAN TMAN_Init(int maxTasks, int ticks_tman){
+TMAN TMAN_Init(int ticks_tman){
     TMAN tm;
-    tm.tasks = calloc(maxTasks, sizeof(int)); //https://stackoverflow.com/questions/35801119/c-struct-with-array-size-determined-at-compile-time
+    // tm.tasks = calloc(maxTasks, sizeof(int)); //https://stackoverflow.com/questions/35801119/c-struct-with-array-size-determined-at-compile-time
     tm.nTasksCreated=0;
     tm.nTasksDeleted=0;
     tm.nTasksActive=0;
     tm.nTicks=0;
-    tm.maxTasks=maxTasks;
+    tm.maxTasks=MAX_TASKS;
     tm.taskId=0;
-    
+
     return tm;
 }
 
 TMAN TMAN_Close(TMAN t){
-    free(t.tasks);
+    // free(t.tasks);
     t.nTasksCreated=0;
     t.nTasksDeleted=0;
     t.nTasksActive=0;
@@ -66,7 +68,7 @@ TMAN TMAN_TaskDelete(TMAN t, char *namec){
 }
 
 TMAN TMAN_TaskRegisterAttributes(TMAN t, int period, int phase, int deadline, char *namec){//}, uint8_t *precedences){
-    
+
     for(int i = 0; i<t.maxTasks;i++){
         if (strcmp(namec, t.tasks[i].name)==0){
             t.tasks[i].period=period;
@@ -80,17 +82,20 @@ TMAN TMAN_TaskRegisterAttributes(TMAN t, int period, int phase, int deadline, ch
 
 int main(int argc, char *argv[])
 {
-    printf("ola\n");
+    TMAN tm = TMAN_Init(0);
     TASK task1 = {80,90,12};
-    TMAN tm;
-    tm=TMAN_Init(3,0);
-    char *name = "YO";
-    char *name2 = "U2";
+    char *name = "Task_1";
+    char *name2 = "Task_2";
+
     tm=TMAN_TaskAdd(tm, name);
     tm=TMAN_TaskAdd(tm, name2);
-    tm=TMAN_TaskRegisterAttributes(tm,30,40,50,"U2");
+
+    printf("Task added\n");
+    tm=TMAN_TaskRegisterAttributes(tm,30,40,50,"Task_1");
+    printf("Attr added\n");
+
     printf("%d,%d\n", task1.period, task1.deadline);
-    printf("%d,%d,%s,%d,%d\n", tm.maxTasks, tm.nTasksCreated, tm.tasks[2].name, tm.tasks[0].period, tm.tasks[1].period);
+    printf("%d,%d,%s,%d,%d\n", tm.maxTasks, tm.nTasksCreated, tm.tasks[0].name, tm.tasks[0].period, tm.tasks[0].phase);
     tm=TMAN_TaskDelete(tm,name2);
-    printf("%d,%d,%s,%d,%d\n", tm.maxTasks, tm.nTasksCreated, tm.tasks[1].name, tm.tasks[0].period, tm.tasks[1].period);
+    printf("%d,%d,%s,%d,%d\n", tm.maxTasks, tm.nTasksCreated, tm.tasks[1].name, tm.tasks[1].period, tm.tasks[1].phase);
 }
