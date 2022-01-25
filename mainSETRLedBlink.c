@@ -51,7 +51,7 @@ SemaphoreHandle_t sem2;
 float res; // Sampled volatge
 float proc_out; //Value that is processed in proc task
 int tick;
-int tman_tick=0;
+int tman_tick=0, started_tasks=0;
 char *tname;
 
 
@@ -61,10 +61,10 @@ typedef struct{
     int phase;
     char *name;
     int id;
-    int state; //0->blocked, 1->suspended, 2->ready
+    int state; //0->blocked, 1->suspended, 2->ready, 3->running
 }TASK;
 
-TASK t1;
+TASK t1 [MAX_TASKS];
 
 typedef struct{
     int nTasksCreated, nTasksDeleted, nTasksActive, tick_period, taskId, maxTasks;
@@ -76,24 +76,28 @@ void simulate(void *pvParam) {
     
     for(;;) {
         tman_tick++;
-        printf("%d ticks\n", tman_tick);
+        //printf("%d ticks\n", tman_tick);
         vTaskDelayUntil(&time, tick);   
     }
 }
 
 void consuming_task(void *pvParam) {
-    int signal=0;
-    char *name= tname;
+    int signal [MAX_TASKS];
+    for(int j=0; j<MAX_TASKS;j++){
+        signal[j]=0;
+    }
     for(;;){
-        if(t1.state==2){
-            if(t1.period%tman_tick==t1.phase){
-                signal=1;
+        for(int i=0; i<started_tasks; i++){
+            if(t1[i].state==2 && signal[i]==0){
+                signal[i] = 1;
+                if((tman_tick%t1[i].period)==t1[i].phase){
+                    printf("%s, %d\n", t1[i].name, tman_tick);
+                }
             }
-            if(signal==1){
-                signal=0;
-                printf("%s, %d, periodo %d, phase %d \n", t1.name, tman_tick, t1.period, t1.phase);
+            if((tman_tick%t1[i].period)!=t1[i].phase){
+                signal[i]=0;
             }
-            //break;
+
         }
     }
 }
@@ -178,11 +182,11 @@ TMAN TMAN_TaskRegisterAttributes(TMAN t, int period, int phase, int deadline, ch
 }
 
 TMAN TMAN_TaskStart(TMAN t, char *name){
-    
+    started_tasks++;
     for(int i = 0; i<t.maxTasks;i++){
         if (strcmp(name, t.tasks[i].name) == 0){
             t.tasks[i].state=2;
-            t1 = t.tasks[i];
+            t1[i] = t.tasks[i];
             
             break;
         }
@@ -208,19 +212,23 @@ int mainSetrLedBlink( void )
 
     TMAN tm = TMAN_Init(1000);
     TASK task1 = {80,90,12};
-    char *name = "Task_1";
-    char *name2 = "Task_2";
+    char *name = "A";
+    char *name2 = "B";
     printf("\n\nStarting simulation\n");
     tm=TMAN_TaskAdd(tm, name);
     tm=TMAN_TaskAdd(tm, name2);
+    tm=TMAN_TaskAdd(tm, "C");
     printf("Task added\n");
-    tm=TMAN_TaskRegisterAttributes(tm, 4, 1, 4,"Task_1");
+    tm=TMAN_TaskRegisterAttributes(tm, 4, 1, 4,"A");
+    tm=TMAN_TaskRegisterAttributes(tm, 4, 2, 4,"B");
+    tm=TMAN_TaskRegisterAttributes(tm, 4, 3, 4,"C");
     printf("Attr added\n");
     printf("%s: Period: %d, Phase: %d\n", tm.tasks[0].name, tm.tasks[0].period, tm.tasks[0].phase);
-    tm=TMAN_TaskDelete(tm,name2);
     printf("%s: Period: %d, Phase: %d\n", tm.tasks[1].name, tm.tasks[1].period, tm.tasks[1].phase);
     printf("Initiate Task\n");
     tm=TMAN_TaskStart(tm,name);
+    tm=TMAN_TaskStart(tm,"B");
+    tm=TMAN_TaskStart(tm,"C");
     
     /* Finally start the scheduler. */
     vTaskStartScheduler();
