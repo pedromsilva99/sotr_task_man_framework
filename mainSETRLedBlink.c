@@ -35,11 +35,6 @@
 /* App includes */
 #include "../UART/uart.h"
 
-/* Set the tasks' period (in system ticks) */
-#define ACQ_PERIOD_MS 	( 100 / portTICK_RATE_MS )
-#define PROC_PERIOD_MS 	( 100 / portTICK_RATE_MS )
-#define OUT_PERIOD_MS 	( 100 / portTICK_RATE_MS )
-
 /* Priorities of the demo application tasks (high numb. -> high prio.) */
 #define ACQ_PRIORITY	( tskIDLE_PRIORITY + 3 )
 #define PROC_PRIORITY	( tskIDLE_PRIORITY + 2 )
@@ -57,6 +52,8 @@ float res; // Sampled volatge
 float proc_out; //Value that is processed in proc task
 int tick;
 int tman_tick=0;
+char *tname;
+
 
 typedef struct{
     int period;
@@ -64,11 +61,13 @@ typedef struct{
     int phase;
     char *name;
     int id;
+    int state; //0->blocked, 1->suspended, 2->ready
 }TASK;
+
+TASK t1;
 
 typedef struct{
     int nTasksCreated, nTasksDeleted, nTasksActive, tick_period, taskId, maxTasks;
-    
     TASK tasks [MAX_TASKS];
 }TMAN;
 
@@ -79,6 +78,23 @@ void simulate(void *pvParam) {
         tman_tick++;
         printf("%d ticks\n", tman_tick);
         vTaskDelayUntil(&time, tick);   
+    }
+}
+
+void consuming_task(void *pvParam) {
+    int signal=0;
+    char *name= tname;
+    for(;;){
+        if(t1.state==2){
+            if(t1.period%tman_tick==t1.phase){
+                signal=1;
+            }
+            if(signal==1){
+                signal=0;
+                printf("%s, %d, periodo %d, phase %d \n", t1.name, tman_tick, t1.period, t1.phase);
+            }
+            //break;
+        }
     }
 }
 
@@ -114,6 +130,7 @@ TMAN TMAN_TaskAdd(TMAN t, char *name){
     tas.deadline=-1;
     tas.phase=-1;
     tas.id = t.taskId;
+    tas.state = 0;
     t.tasks[t.taskId] = tas;
     t.taskId++;
     return t;
@@ -133,21 +150,19 @@ TMAN TMAN_TaskDelete(TMAN t, char *namec){
     return t;
 }
 
-TMAN TMAN_TaskWaitPeriod(TMAN t, int task_period) {
-    TickType_t time = xTaskGetTickCount();
-    
-    for(;;) {
-        printf("2 em 2 segundos\n");
-        vTaskDelayUntil(&time, t.tick_period * task_period);
+TMAN TMAN_TaskWaitPeriod(TMAN t, char *name) {
+    for(int i = 0; i<t.maxTasks;i++){
+        if (strcmp(name, t.tasks[i].name)==0){
+            t.tasks[i].state = 0;
+            break;
+        }
     }
-    
+    t.nTasksDeleted++;
     return t;
 }
 
-
-
 // phase is the offset, add state (blocked ...)
-TMAN TMAN_TaskRegisterAttributes(TMAN t, int period, int phase, int deadline, char *namec){//}, uint8_t *precedences){
+TMAN TMAN_TaskRegisterAttributes(TMAN t, int period, int phase, int deadline, char *namec){
     assert(period > phase);
     assert(deadline > phase);
     for(int i = 0; i<t.maxTasks;i++){
@@ -162,6 +177,19 @@ TMAN TMAN_TaskRegisterAttributes(TMAN t, int period, int phase, int deadline, ch
     return t;
 }
 
+TMAN TMAN_TaskStart(TMAN t, char *name){
+    
+    for(int i = 0; i<t.maxTasks;i++){
+        if (strcmp(name, t.tasks[i].name) == 0){
+            t.tasks[i].state=2;
+            t1 = t.tasks[i];
+            
+            break;
+        }
+    }
+    xTaskCreate( consuming_task, ( const signed char * const ) name, configMINIMAL_STACK_SIZE, NULL, OUT_PRIORITY, NULL );
+}
+
 /* Tasks*/
 
 void uart(void){
@@ -174,21 +202,9 @@ void uart(void){
     __XC_UART = 1; /* Redirect stdin/stdout/stderr to UART1*/
 }
 
-void acq(void *pvParam)
-{ 
-    
-}
-
-
 int mainSetrLedBlink( void )
 {
-    /* Create the tasks defined within this file. */
-	//xTaskCreate( acq, ( const signed char * const ) "acq", configMINIMAL_STACK_SIZE, NULL, ACQ_PRIORITY, NULL );
-
-    /* Finally start the scheduler. */
-	
-    
-    uart();           
+    uart(); //print to the terminal       
 
     TMAN tm = TMAN_Init(1000);
     TASK task1 = {80,90,12};
@@ -197,26 +213,16 @@ int mainSetrLedBlink( void )
     printf("\n\nStarting simulation\n");
     tm=TMAN_TaskAdd(tm, name);
     tm=TMAN_TaskAdd(tm, name2);
-    
     printf("Task added\n");
-    tm=TMAN_TaskRegisterAttributes(tm, 3, 2, 5,"Task_1");
+    tm=TMAN_TaskRegisterAttributes(tm, 4, 1, 4,"Task_1");
     printf("Attr added\n");
-    
-    // printf("%d,%d\n", task1.period, task1.deadline);
     printf("%s: Period: %d, Phase: %d\n", tm.tasks[0].name, tm.tasks[0].period, tm.tasks[0].phase);
     tm=TMAN_TaskDelete(tm,name2);
     printf("%s: Period: %d, Phase: %d\n", tm.tasks[1].name, tm.tasks[1].period, tm.tasks[1].phase);
-        
-    
-    printf("Tick period of TMAN: %d ms\n", tm.tick_period);
-    
-
     printf("Initiate Task\n");
+    tm=TMAN_TaskStart(tm,name);
     
-    
-    
-    
-    
+    /* Finally start the scheduler. */
     vTaskStartScheduler();
     
     //TMAN_TaskWaitPeriod(tm, tm.tasks[0].period);
