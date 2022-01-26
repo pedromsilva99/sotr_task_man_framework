@@ -54,6 +54,7 @@ int tick;
 int tman_tick=0, started_tasks=0;
 char *tname;
 
+void TMAN_TaskWaitPeriod(int tar);
 
 typedef struct{
     int period;
@@ -77,25 +78,24 @@ void simulate(void *pvParam) {
     for(;;) {
         tman_tick++;
         //printf("%d ticks\n", tman_tick);
+        for(int i=0; i<started_tasks; i++){
+            if((tman_tick%t1[i].period)==t1[i].phase){
+                t1[i].state=2;
+            }
+        }
         vTaskDelayUntil(&time, tick);   
     }
 }
 
+
 void consuming_task(void *pvParam) {
-    int signal [MAX_TASKS];
-    for(int j=0; j<MAX_TASKS;j++){
-        signal[j]=0;
-    }
+    
     for(;;){
         for(int i=0; i<started_tasks; i++){
-            if(t1[i].state==2 && signal[i]==0){
-                signal[i] = 1;
-                if((tman_tick%t1[i].period)==t1[i].phase){
-                    printf("%s, %d\n", t1[i].name, tman_tick);
-                }
-            }
-            if((tman_tick%t1[i].period)!=t1[i].phase){
-                signal[i]=0;
+            if(t1[i].state==2){
+                TMAN_TaskWaitPeriod(i);
+                printf("%s, %d\n", t1[i].name, tman_tick);
+                
             }
 
         }
@@ -154,15 +154,8 @@ TMAN TMAN_TaskDelete(TMAN t, char *namec){
     return t;
 }
 
-TMAN TMAN_TaskWaitPeriod(TMAN t, char *name) {
-    for(int i = 0; i<t.maxTasks;i++){
-        if (strcmp(name, t.tasks[i].name)==0){
-            t.tasks[i].state = 0;
-            break;
-        }
-    }
-    t.nTasksDeleted++;
-    return t;
+void TMAN_TaskWaitPeriod(int tar) {
+    t1[tar].state = 0;
 }
 
 // phase is the offset, add state (blocked ...)
@@ -185,7 +178,7 @@ TMAN TMAN_TaskStart(TMAN t, char *name){
     started_tasks++;
     for(int i = 0; i<t.maxTasks;i++){
         if (strcmp(name, t.tasks[i].name) == 0){
-            t.tasks[i].state=2;
+            t.tasks[i].state=1;
             t1[i] = t.tasks[i];
             
             break;
