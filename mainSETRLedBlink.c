@@ -63,6 +63,9 @@ typedef struct{
     char *name;
     int id;
     int state; //0->blocked, 1->suspended, 2->ready, 3->running
+    int prec_signal;
+    char *prec;
+    
 }TASK;
 
 TASK t1 [MAX_TASKS];
@@ -78,9 +81,38 @@ void simulate(void *pvParam) {
     for(;;) {
         tman_tick++;
         //printf("%d ticks\n", tman_tick);
+        /* Ver quais são as tasks que devem correr neste ciclo*/
         for(int i=0; i<started_tasks; i++){
             if((tman_tick%t1[i].period)==t1[i].phase){
                 t1[i].state=2;
+            }
+        }
+        /* Ver quais são as tasks que têm que ficar suspensas porque têm precedências*/
+        for(int j=0; j<started_tasks;j++){
+            if(t1[j].state == 2 && t1[j].prec_signal == 1){
+                for(int k=0; k<started_tasks;k++){
+                    if(strcmp(t1[j].prec, t1[k].name) == 0){
+                        if(t1[k].state==2 || t1[k].state==1){
+                            t1[j].state=1;
+                            printf("%s espera porque tem precedencias %s\n", t1[j].name, t1[k].name);
+                        }
+                    }
+                }
+                //printf("%s, tem precedencias %s\n", t1[j].name, t1[j].prec);
+            }
+            else if(t1[j].state == 1){
+                for(int k=0; k<started_tasks;k++){
+                    if(strcmp(t1[j].prec, t1[k].name) == 0){
+                        if(t1[k].state==0){
+                            t1[j].state=2;
+                            printf("%s ja nao precisa  %s\n", t1[j].name, t1[k].name);
+                        }
+                    }
+                }
+                //printf("%s, tem precedencias %s\n", t1[j].name, t1[j].prec);
+            }
+            else{
+                
             }
         }
         vTaskDelayUntil(&time, tick);   
@@ -94,8 +126,15 @@ void consuming_task(void *pvParam) {
         for(int i=0; i<started_tasks; i++){
             if(t1[i].state==2){
                 TMAN_TaskWaitPeriod(i);
-                printf("%s, %d\n", t1[i].name, tman_tick);
-                
+                int sum = 1;
+                //for(int j=1;j<1000;j++){
+                //    for(int k=1;k<1000;k++){
+                //        sum=sum*j*k;
+                //    }
+                //}
+                char buffer[50];
+                sprintf(buffer, "%s, %d\n", t1[i].name, tman_tick);
+                printf("%s", buffer);
             }
 
         }
@@ -135,6 +174,8 @@ TMAN TMAN_TaskAdd(TMAN t, char *name){
     tas.phase=-1;
     tas.id = t.taskId;
     tas.state = 0;
+    tas.prec_signal = 0;
+    tas.prec = "";
     t.tasks[t.taskId] = tas;
     t.taskId++;
     return t;
@@ -159,7 +200,7 @@ void TMAN_TaskWaitPeriod(int tar) {
 }
 
 // phase is the offset, add state (blocked ...)
-TMAN TMAN_TaskRegisterAttributes(TMAN t, int period, int phase, int deadline, char *namec){
+TMAN TMAN_TaskRegisterAttributes(TMAN t, int period, int phase, int deadline, char *namec, char *prec_task){
     assert(period > phase);
     assert(deadline > phase);
     for(int i = 0; i<t.maxTasks;i++){
@@ -167,6 +208,10 @@ TMAN TMAN_TaskRegisterAttributes(TMAN t, int period, int phase, int deadline, ch
             t.tasks[i].period=period;
             t.tasks[i].deadline=deadline;
             t.tasks[i].phase=phase;
+            if (strcmp(prec_task, "") != 0){
+                t.tasks[i].prec_signal = 1;
+                t.tasks[i].prec = prec_task;
+            }
             break;
         }
     }
@@ -212,9 +257,9 @@ int mainSetrLedBlink( void )
     tm=TMAN_TaskAdd(tm, name2);
     tm=TMAN_TaskAdd(tm, "C");
     printf("Task added\n");
-    tm=TMAN_TaskRegisterAttributes(tm, 4, 1, 4,"A");
-    tm=TMAN_TaskRegisterAttributes(tm, 4, 2, 4,"B");
-    tm=TMAN_TaskRegisterAttributes(tm, 4, 3, 4,"C");
+    tm=TMAN_TaskRegisterAttributes(tm, 4, 2, 4,"A","C");
+    tm=TMAN_TaskRegisterAttributes(tm, 4, 2, 4,"B","A");
+    tm=TMAN_TaskRegisterAttributes(tm, 4, 2, 4,"C","");
     printf("Attr added\n");
     printf("%s: Period: %d, Phase: %d\n", tm.tasks[0].name, tm.tasks[0].period, tm.tasks[0].phase);
     printf("%s: Period: %d, Phase: %d\n", tm.tasks[1].name, tm.tasks[1].period, tm.tasks[1].phase);
