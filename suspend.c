@@ -122,7 +122,7 @@ void consuming_task(void *pvParam) {
                     if( xQueueSend( xQueue1,( void * ) &buffer,( TickType_t ) 0 ) != pdPASS ){
                         /* Failed to post the message, even after 10 ticks. */
                     }
-                    printf("%s", buffer);
+                    
                 }
                 TMAN_TaskWaitPeriod(i);
             }   
@@ -131,16 +131,12 @@ void consuming_task(void *pvParam) {
 }
 
 void printing_queue(void *pvParam) {
-    void * xRxedStructure;
-    char *ptemp;
+    char xStructure[50];
     for(;;){
         
-        if( xQueueReceive( xQueue1,& (xRxedStructure),( TickType_t ) 10 ) == pdPASS ){
-         /* xRxedStructure now contains a copy of xMessage. */
-            //printf("Da 3\n");
-            ptemp = (char *)xRxedStructure;
-            //printf("Value:  %d\n", *xRxedStructure );
-            //printf("OH FUCK %s\n", ptemp);    
+        if( xQueueReceive( xQueue1,xStructure,( TickType_t ) 10 ) == pdPASS ){
+         /* xStructure now contains a copy of xMessage. */
+            printf("%s", xStructure);    
         }
         
         
