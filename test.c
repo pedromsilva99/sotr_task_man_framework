@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "nqueue.c"
 
 #define MAX_TASKS 5
 
@@ -98,4 +99,17 @@ int main(int argc, char *argv[])
     printf("%d,%d,%s,%d,%d\n", tm.maxTasks, tm.nTasksCreated, tm.tasks[0].name, tm.tasks[0].period, tm.tasks[0].phase);
     tm=TMAN_TaskDelete(tm,name2);
     printf("%d,%d,%s,%d,%d\n", tm.maxTasks, tm.nTasksCreated, tm.tasks[1].name, tm.tasks[1].period, tm.tasks[1].phase);
+
+    char buffer[50];
+    sprintf(buffer, "xupamos\n");
+    //printf("%s", buffer);
+    struct nQueue * que = newQueue(30);
+    enqueue(que,buffer);
+    enqueue(que, "QUeue");
+    printf("%d \n", que->size);
+    printf("%s \n", dequeue(que));
+    printf("%s \n", dequeue(que));
+    printf("%d \n", que->size);
+    printf("%s \n", dequeue(que));
+
 }
