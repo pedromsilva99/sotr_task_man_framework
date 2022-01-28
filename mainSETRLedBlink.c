@@ -40,7 +40,7 @@
 
 #define SYSCLK  80000000L // System clock frequency, in Hz
 #define PBCLOCK 40000000L // Peripheral Bus Clock frequency, in Hz
-#define MAX_TASKS 5
+#define MAX_TASKS 6
 
 // Variable declarations;
 int tick;
@@ -83,6 +83,7 @@ void simulate(void *pvParam) {
     for(;;) {
         tman_tick++;
         //printf("%d ticks\n", tman_tick);
+        
         for(int i=0; i<started_tasks; i++){
             /* Ver quais são as tasks que devem correr neste ciclo*/
             if((tman_tick%t1[i].period)==t1[i].phase && t1[i].prec_signal==0){
@@ -90,25 +91,32 @@ void simulate(void *pvParam) {
                 vTaskResume(xHandle[i] );
                 t1[i].state=2;
             }
-            /* Ver quais são as tasks que têm que ficar suspensas porque têm precedências*/
-            else if((tman_tick%t1[i].period)==t1[i].phase && t1[i].prec_signal==1){
-                for(int k=0; k<started_tasks;k++){
-                    if(strcmp(t1[i].prec, t1[k].name) == 0){
-                        if(t1[k].state==2 || t1[k].state==1){
-                            t1[i].state=1;
-                            printf("%s espera porque tem precedencias %s\n", t1[i].name, t1[k].name);
+        }
+        for(int j=0; j<started_tasks; j++){
+            for(int i=0; i<started_tasks; i++){
+                /* Ver quais são as tasks que têm que ficar suspensas porque têm precedências*/
+                if((tman_tick%t1[i].period)==t1[i].phase && t1[i].prec_signal==1){
+                    for(int k=0; k<started_tasks;k++){
+                        if(strcmp(t1[i].prec, t1[k].name) == 0){
+                            if(t1[k].state==2 || t1[k].state==1){
+                                t1[i].state=1;
+                                // printf("%s espera porque tem precedencias %s\n", t1[i].name, t1[k].name);
+                            }
+                            else{
+                                t1[i].state=2;
+                            }
                         }
                     }
                 }
-            }
-            /* Ver quais são as tasks que estão suspensas e já podem retornar a sua atividade*/
-            else if((t1[i].state==1)){
-                for(int k=0; k<started_tasks;k++){
-                    if(strcmp(t1[i].prec, t1[k].name) == 0){
-                        if(t1[k].state==0){
-                            t1[i].state=2;
-                            printf("%s ja nao precisa  %s\n", t1[i].name, t1[k].name);
-                            vTaskResume(xHandle[i] );
+                /* Ver quais são as tasks que estão suspensas e já podem retornar a sua atividade*/
+                else if((t1[i].state==1)){
+                    for(int k=0; k<started_tasks;k++){
+                        if(strcmp(t1[i].prec, t1[k].name) == 0){
+                            if(t1[k].state==0){
+                                t1[i].state=2;
+                                // printf("%s ja nao precisa  %s\n", t1[i].name, t1[k].name);
+                                vTaskResume(xHandle[i] );
+                            }
                         }
                     }
                 }
@@ -126,18 +134,18 @@ void consuming_task(void *pvParam) {
         for(int i=0; i<started_tasks; i++){
             if(t1[i].state==2){
                 int sum = 1;
-                //for(int j=1;j<1000;j++){
-                //    for(int k=1;k<1000;k++){
-                //        sum=sum*j*k;
-                //    }
-                //}
+                for(int j=1;j<100;j++){
+                    for(int k=1;k<18;k++){
+                        sum = sum * j * k;
+                    }
+                }
                 char buffer[50];
                 sprintf(buffer, "%s, %d\n", t1[i].name, tman_tick);
                 
                 if( xQueue1 != 0 ){
                     if( xQueueSend( xQueue1,( void * ) &buffer,( TickType_t ) 0 ) != pdPASS ){
                         /* Failed to post the message, even after 10 ticks. */
-                        printf("Failed to load message to queue\n");
+                        // printf("Failed to load message to queue\n");
                     }
                     
                 }
@@ -277,10 +285,16 @@ int mainSetrLedBlink( void )
     tm=TMAN_TaskAdd(tm, "A");
     tm=TMAN_TaskAdd(tm, "B");
     tm=TMAN_TaskAdd(tm, "C");
+    tm=TMAN_TaskAdd(tm, "D");
+    tm=TMAN_TaskAdd(tm, "E");
+    tm=TMAN_TaskAdd(tm, "F");
     printf("Task added\n");
-    tm=TMAN_TaskRegisterAttributes(tm, 4, 2, 4,"A","");
-    tm=TMAN_TaskRegisterAttributes(tm, 4, 2, 4,"B","A");
-    tm=TMAN_TaskRegisterAttributes(tm, 4, 2, 4,"C","B");
+    tm=TMAN_TaskRegisterAttributes(tm, 4, 2, 4,"A","B");
+    tm=TMAN_TaskRegisterAttributes(tm, 4, 2, 4,"B","C");
+    tm=TMAN_TaskRegisterAttributes(tm, 4, 2, 4,"C","");
+    tm=TMAN_TaskRegisterAttributes(tm, 4, 2, 4,"D","E");
+    tm=TMAN_TaskRegisterAttributes(tm, 4, 2, 4,"E","C");
+    tm=TMAN_TaskRegisterAttributes(tm, 4, 2, 4,"F","A");
     printf("Attr added\n");
     printf("%s: Period: %d, Phase: %d\n", tm.tasks[0].name, tm.tasks[0].period, tm.tasks[0].phase);
     printf("%s: Period: %d, Phase: %d\n", tm.tasks[1].name, tm.tasks[1].period, tm.tasks[1].phase);
@@ -288,6 +302,9 @@ int mainSetrLedBlink( void )
     tm=TMAN_TaskStart(tm,"A");
     tm=TMAN_TaskStart(tm,"B");
     tm=TMAN_TaskStart(tm,"C");
+    tm=TMAN_TaskStart(tm,"D");
+    tm=TMAN_TaskStart(tm,"E");
+    tm=TMAN_TaskStart(tm,"F");
     
     /* Finally start the scheduler. */
     vTaskStartScheduler();
@@ -297,3 +314,4 @@ int mainSetrLedBlink( void )
     
 	return 0;
 }
+
