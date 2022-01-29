@@ -53,6 +53,7 @@ typedef struct{
     int period;
     int deadline;
     int phase;
+    int executed; // 0 -> no, 1 -> yes
     char *name;
     int id;
     int state; //0->blocked, 1->suspended, 2->ready
@@ -87,23 +88,46 @@ void simulate(void *pvParam) {
         for(int i=0; i<started_tasks; i++){
             /* Ver quais são as tasks que devem correr neste ciclo*/
             if((tman_tick%t1[i].period)==t1[i].phase && t1[i].prec_signal==0){
-                
                 vTaskResume(xHandle[i] );
                 t1[i].state=2;
             }
+            if ((tman_tick%t1[i].period) == 0) {
+                t1[i].executed = 0;
+            }
         }
+        
+        // Run all tasks
+//        for (int i = 0; i < started_tasks; i++) {
+//            // Task has precedence
+//            if ((tman_tick % t1[i].period) >= t1[i].phase && t1[i].prec_signal == 1) {
+//                for (int j = 0; j < started_tasks; j++) {
+//                    if (strcmp(t1[i].prec, t1[j].name) == 0) {
+//                        if (t1[j].executed == 1) {
+//                            t1[i].state=2;  // Task is ready
+//                            vTaskResume(xHandle[i]);
+//                        } else {
+//                            t1[i].state=1;  // Task is suspended
+//                        }
+//                    }
+//                }
+//            }
+//        }
         for(int j=0; j<started_tasks; j++){
             for(int i=0; i<started_tasks; i++){
                 /* Ver quais são as tasks que têm que ficar suspensas porque têm precedências*/
                 if((tman_tick%t1[i].period)==t1[i].phase && t1[i].prec_signal==1){
                     for(int k=0; k<started_tasks;k++){
                         if(strcmp(t1[i].prec, t1[k].name) == 0){
+                            
+                            // Se a task que precede esta a correr ou suspensa, esta tambem fica suspensa
                             if(t1[k].state==2 || t1[k].state==1){
                                 t1[i].state=1;
                                 // printf("%s espera porque tem precedencias %s\n", t1[i].name, t1[k].name);
-                            }
-                            else{
-                                t1[i].state=2;
+                            } else if(t1[k].executed == 1) {
+                                t1[i].state = 2;
+                                vTaskResume(xHandle[i] );
+                            } else if (t1[k].executed == 0) {
+                                t1[i].state = 1;
                             }
                         }
                     }
@@ -112,7 +136,7 @@ void simulate(void *pvParam) {
                 else if((t1[i].state==1)){
                     for(int k=0; k<started_tasks;k++){
                         if(strcmp(t1[i].prec, t1[k].name) == 0){
-                            if(t1[k].state==0){
+                            if(t1[k].executed == 1){
                                 t1[i].state=2;
                                 // printf("%s ja nao precisa  %s\n", t1[i].name, t1[k].name);
                                 vTaskResume(xHandle[i] );
@@ -224,6 +248,7 @@ TMAN TMAN_TaskDelete(TMAN t, char *namec){
 
 void TMAN_TaskWaitPeriod(int tar) {
     t1[tar].state = 0;
+    t1[tar].executed = 1;
     if( xHandle[tar] != NULL ){                
         vTaskSuspend( xHandle[tar] );
     }
@@ -238,6 +263,7 @@ TMAN TMAN_TaskRegisterAttributes(TMAN t, int period, int phase, int deadline, ch
             t.tasks[i].period=period;
             t.tasks[i].deadline=deadline;
             t.tasks[i].phase=phase;
+            t.tasks[i].executed = 0;
             if (strcmp(prec_task, "") != 0){
                 t.tasks[i].prec_signal = 1;
                 t.tasks[i].prec = prec_task;
@@ -289,12 +315,12 @@ int mainSetrLedBlink( void )
     tm=TMAN_TaskAdd(tm, "E");
     tm=TMAN_TaskAdd(tm, "F");
     printf("Task added\n");
-    tm=TMAN_TaskRegisterAttributes(tm, 4, 2, 4,"A","B");
-    tm=TMAN_TaskRegisterAttributes(tm, 4, 2, 4,"B","C");
-    tm=TMAN_TaskRegisterAttributes(tm, 4, 2, 4,"C","");
-    tm=TMAN_TaskRegisterAttributes(tm, 4, 2, 4,"D","E");
-    tm=TMAN_TaskRegisterAttributes(tm, 4, 2, 4,"E","C");
-    tm=TMAN_TaskRegisterAttributes(tm, 4, 2, 4,"F","A");
+    tm=TMAN_TaskRegisterAttributes(tm, 10, 2, 12,"A","B");
+    tm=TMAN_TaskRegisterAttributes(tm, 10, 2, 12,"B","C");
+    tm=TMAN_TaskRegisterAttributes(tm, 10, 3, 12,"C","");
+    tm=TMAN_TaskRegisterAttributes(tm, 10, 3, 12,"D","E");
+    tm=TMAN_TaskRegisterAttributes(tm, 10, 6, 12,"E","C");
+    tm=TMAN_TaskRegisterAttributes(tm, 10, 4, 12,"F","A");
     printf("Attr added\n");
     printf("%s: Period: %d, Phase: %d\n", tm.tasks[0].name, tm.tasks[0].period, tm.tasks[0].phase);
     printf("%s: Period: %d, Phase: %d\n", tm.tasks[1].name, tm.tasks[1].period, tm.tasks[1].phase);
