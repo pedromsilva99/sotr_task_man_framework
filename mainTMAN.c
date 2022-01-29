@@ -54,6 +54,7 @@ typedef struct{
     int deadline;
     int phase;
     int executed; // 0 -> no, 1 -> yes
+    int executed_once;
     char *name;
     int id;
     int state; //0->blocked, 1->suspended, 2->ready
@@ -91,7 +92,7 @@ void simulate(void *pvParam) {
                 vTaskResume(xHandle[i] );
                 t1[i].state=2;
             }
-            if ((tman_tick%t1[i].period) == 0) {
+            if ((tman_tick%t1[i].period) == t1[i].phase) {
                 t1[i].executed = 0;
             }
         }
@@ -145,6 +146,8 @@ void simulate(void *pvParam) {
                     }
                 }
             }
+            if (tman_tick >= (t1[j].deadline + t1[j].phase) && t1[j].executed_once == 0 && tman_tick % t1[j].period == t1[j].phase)
+                printf("Deadline missed for Task %s\n", t1[j].name);
         }
         
         vTaskDelayUntil(&time, tick);   
@@ -249,6 +252,8 @@ TMAN TMAN_TaskDelete(TMAN t, char *namec){
 void TMAN_TaskWaitPeriod(int tar) {
     t1[tar].state = 0;
     t1[tar].executed = 1;
+    if (t1[tar].executed_once == 0)
+        t1[tar].executed_once = 1;
     if( xHandle[tar] != NULL ){                
         vTaskSuspend( xHandle[tar] );
     }
@@ -257,13 +262,18 @@ void TMAN_TaskWaitPeriod(int tar) {
 // phase is the offset, add state (blocked ...)
 TMAN TMAN_TaskRegisterAttributes(TMAN t, int period, int phase, int deadline, char *namec, char *prec_task){
     assert(period > phase);
-    assert(deadline > phase);
+//    assert(deadline > phase);
+    if (period > deadline) {
+        printf("System is not scalonable!\n");
+        exit(0);
+    }
     for(int i = 0; i<t.maxTasks;i++){
         if (strcmp(namec, t.tasks[i].name) == 0){
             t.tasks[i].period=period;
             t.tasks[i].deadline=deadline;
             t.tasks[i].phase=phase;
             t.tasks[i].executed = 0;
+            t.tasks[i].executed_once = 0;
             if (strcmp(prec_task, "") != 0){
                 t.tasks[i].prec_signal = 1;
                 t.tasks[i].prec = prec_task;
@@ -298,7 +308,7 @@ void uart(void){
     __XC_UART = 1; /* Redirect stdin/stdout/stderr to UART1*/
 }
 
-int mainSetrLedBlink( void )
+int mainTman( void )
 {
     uart(); //print to the terminal      
     xQueue1 = xQueueCreate(10,50);
@@ -307,7 +317,7 @@ int mainSetrLedBlink( void )
     }
     TMAN tm = TMAN_Init(1000);
     TASK task1 = {80,90,12};
-    printf("\n\nStarting simulation\n");
+    printf("\n\nStarting TMAN simulation\n");
     tm=TMAN_TaskAdd(tm, "A");
     tm=TMAN_TaskAdd(tm, "B");
     tm=TMAN_TaskAdd(tm, "C");
@@ -315,12 +325,12 @@ int mainSetrLedBlink( void )
     tm=TMAN_TaskAdd(tm, "E");
     tm=TMAN_TaskAdd(tm, "F");
     printf("Task added\n");
-    tm=TMAN_TaskRegisterAttributes(tm, 10, 2, 12,"A","B");
-    tm=TMAN_TaskRegisterAttributes(tm, 10, 2, 12,"B","C");
-    tm=TMAN_TaskRegisterAttributes(tm, 10, 3, 12,"C","");
-    tm=TMAN_TaskRegisterAttributes(tm, 10, 3, 12,"D","E");
-    tm=TMAN_TaskRegisterAttributes(tm, 10, 6, 12,"E","C");
-    tm=TMAN_TaskRegisterAttributes(tm, 10, 4, 12,"F","A");
+    tm=TMAN_TaskRegisterAttributes(tm, 4, 3, 4,"A","B");
+    tm=TMAN_TaskRegisterAttributes(tm, 4, 3, 4,"B","C");
+    tm=TMAN_TaskRegisterAttributes(tm, 4, 3, 4,"C","");
+    tm=TMAN_TaskRegisterAttributes(tm, 4, 3, 4,"D","A");
+    tm=TMAN_TaskRegisterAttributes(tm, 4, 3, 4,"E","D");
+    tm=TMAN_TaskRegisterAttributes(tm, 4, 3, 4,"F","E");
     printf("Attr added\n");
     printf("%s: Period: %d, Phase: %d\n", tm.tasks[0].name, tm.tasks[0].period, tm.tasks[0].phase);
     printf("%s: Period: %d, Phase: %d\n", tm.tasks[1].name, tm.tasks[1].period, tm.tasks[1].phase);
