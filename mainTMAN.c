@@ -1,4 +1,3 @@
-
 /* 
  * Pedro Silva 89228
  * Pedro Gonçalves 88859
@@ -45,6 +44,7 @@
 // Variable declarations;
 int tick;
 int tman_tick=0, started_tasks=0;
+int close_tick, stats_tick;
 
 void TMAN_TaskWaitPeriod(int tar);
 void consuming_task(void *pvParam);
@@ -57,6 +57,8 @@ typedef struct{
     int executed_once;
     char *name;
     int id;
+    int activations;
+    int deadlines_missed;
     int state; //0->blocked, 1->suspended, 2->ready
     int prec_signal;
     char *prec;
@@ -95,24 +97,12 @@ void simulate(void *pvParam) {
             if ((tman_tick%t1[i].period) == t1[i].phase) {
                 t1[i].executed = 0;
             }
+            if (tman_tick == close_tick)
+                TMAN_CloseInternal();
+            if (tman_tick % stats_tick == 0)
+                TMAN_TaskStatsInternal(i);
         }
         
-        // Run all tasks
-//        for (int i = 0; i < started_tasks; i++) {
-//            // Task has precedence
-//            if ((tman_tick % t1[i].period) >= t1[i].phase && t1[i].prec_signal == 1) {
-//                for (int j = 0; j < started_tasks; j++) {
-//                    if (strcmp(t1[i].prec, t1[j].name) == 0) {
-//                        if (t1[j].executed == 1) {
-//                            t1[i].state=2;  // Task is ready
-//                            vTaskResume(xHandle[i]);
-//                        } else {
-//                            t1[i].state=1;  // Task is suspended
-//                        }
-//                    }
-//                }
-//            }
-//        }
         for(int j=0; j<started_tasks; j++){
             for(int i=0; i<started_tasks; i++){
                 /* Ver quais são as tasks que têm que ficar suspensas porque têm precedências*/
@@ -146,8 +136,10 @@ void simulate(void *pvParam) {
                     }
                 }
             }
-            if (tman_tick >= (t1[j].deadline + t1[j].phase) && t1[j].executed_once == 0 && tman_tick % t1[j].period == t1[j].phase)
+            if (tman_tick >= (t1[j].deadline + t1[j].phase) && t1[j].executed_once == 0 && tman_tick % t1[j].period == t1[j].phase) {
                 printf("Deadline missed for Task %s\n", t1[j].name);
+                t1[j].deadlines_missed++;
+            }
         }
         
         vTaskDelayUntil(&time, tick);   
@@ -209,14 +201,18 @@ TMAN TMAN_Init(int ticks_tman){
     return tm;
 }
 
-TMAN TMAN_Close(TMAN t){
-    // free(t.tasks);
-    t.nTasksCreated=0;
-    t.nTasksDeleted=0;
-    t.nTasksActive=0;
-    t.tick_period=0;
-    t.taskId=0;
-    return t;
+void TMAN_Close(int tick_c){
+    close_tick = tick_c;
+}
+
+void TMAN_CloseInternal(void){
+    for (int i = 0; i < started_tasks; i++) {
+        if( xHandle[i] != NULL )
+            vTaskDelete( xHandle[i] );
+    }
+    started_tasks = 0;
+    printf("TMAN Closed!\n");
+    exit(0);
 }
 
 TMAN TMAN_TaskAdd(TMAN t, char *name){
@@ -249,9 +245,18 @@ TMAN TMAN_TaskDelete(TMAN t, char *namec){
     return t;
 }
 
+void TMAN_TaskStats(int tick_s) {
+    stats_tick = tick_s;
+}
+
+void TMAN_TaskStatsInternal(int task_id) {
+    printf("Task %s total activations: %d, deadlines missed: %d\n", t1[task_id].name, t1[task_id].activations, t1[task_id].deadlines_missed);
+}
+
 void TMAN_TaskWaitPeriod(int tar) {
     t1[tar].state = 0;
     t1[tar].executed = 1;
+    t1[tar].activations++;
     if (t1[tar].executed_once == 0)
         t1[tar].executed_once = 1;
     if( xHandle[tar] != NULL ){                
@@ -264,7 +269,7 @@ TMAN TMAN_TaskRegisterAttributes(TMAN t, int period, int phase, int deadline, ch
     assert(period > phase);
 //    assert(deadline > phase);
     if (period > deadline) {
-        printf("System is not scalonable!\n");
+        printf("System is not feasible!\n");
         exit(0);
     }
     for(int i = 0; i<t.maxTasks;i++){
@@ -274,6 +279,8 @@ TMAN TMAN_TaskRegisterAttributes(TMAN t, int period, int phase, int deadline, ch
             t.tasks[i].phase=phase;
             t.tasks[i].executed = 0;
             t.tasks[i].executed_once = 0;
+            t.tasks[i].activations = 0;
+            t.tasks[i].deadlines_missed = 0;
             if (strcmp(prec_task, "") != 0){
                 t.tasks[i].prec_signal = 1;
                 t.tasks[i].prec = prec_task;
@@ -342,12 +349,12 @@ int mainTman( void )
     tm=TMAN_TaskStart(tm,"E");
     tm=TMAN_TaskStart(tm,"F");
     
+    TMAN_Close(55);
+    TMAN_TaskStats(25);
     /* Finally start the scheduler. */
     vTaskStartScheduler();
     
-    //TMAN_TaskWaitPeriod(tm, tm.tasks[0].period);
     printf("End Task\n");
     
 	return 0;
 }
-
