@@ -32,28 +32,31 @@
 #include "../UART/uart.h"
 
 /* Priorities of the demo application tasks (high numb. -> high prio.) */
-#define HIGHER_PRIORITY	( tskIDLE_PRIORITY + 4 ) //com 5 nao funciona
-#define MEDIUM_PRIORITY	( tskIDLE_PRIORITY + 3 )
-#define PROC_PRIORITY	( tskIDLE_PRIORITY + 2 )
-#define LOWER_PRIORITY	( tskIDLE_PRIORITY + 1 )
+#define HIGHER_PRIORITY         ( tskIDLE_PRIORITY + 4 ) //com 5 nao funciona
+#define MEDIUM_HIGH_PRIORITY	( tskIDLE_PRIORITY + 3 )
+#define MEDIUM_PRIORITY         ( tskIDLE_PRIORITY + 2 )
+#define MEDIUM_LOW_PRIORITY     ( tskIDLE_PRIORITY + 1 )
+#define LOWER_PRIORITY          ( tskIDLE_PRIORITY )
 
 #define SYSCLK  80000000L // System clock frequency, in Hz
 #define PBCLOCK 40000000L // Peripheral Bus Clock frequency, in Hz
 #define MAX_TASKS 6
+
+void TMAN_TaskWaitPeriod(int tar);
+void TMAN_CloseInternal(void);
+void TMAN_TaskStatsInternal(int task_id);
+void consuming_task(void *pvParam);
 
 // Variable declarations;
 int tick;
 int tman_tick=0, started_tasks=0;
 int close_tick, stats_tick;
 
-void TMAN_TaskWaitPeriod(int tar);
-void consuming_task(void *pvParam);
-
 typedef struct{
     int period;
     int deadline;
     int phase;
-    int executed; // 0 -> no, 1 -> yes
+    int prec_executed; // 0 -> no, 1 -> yes
     int executed_once;
     char *name;
     int id;
@@ -68,7 +71,7 @@ typedef struct{
 TASK t1 [MAX_TASKS];
 
 typedef struct{
-    int nTasksCreated, nTasksDeleted, nTasksActive, tick_period, taskId, maxTasks;
+    int taskId, maxTasks;
     TASK tasks [MAX_TASKS];
 }TMAN;
 
@@ -77,10 +80,16 @@ QueueHandle_t xQueue1;
 
 /* Tasks*/
 
-void simulate(void *pvParam) {
+void scheduler(void *pvParam) {
     TickType_t time = xTaskGetTickCount();
+    xTaskCreate( consuming_task, ( const signed char * const ) t1[0].name, configMINIMAL_STACK_SIZE, NULL, HIGHER_PRIORITY, &xHandle[0] );
+    xTaskCreate( consuming_task, ( const signed char * const ) t1[1].name, configMINIMAL_STACK_SIZE, NULL, HIGHER_PRIORITY, &xHandle[1] );
+    xTaskCreate( consuming_task, ( const signed char * const ) t1[2].name, configMINIMAL_STACK_SIZE, NULL, MEDIUM_HIGH_PRIORITY, &xHandle[2] );
+    xTaskCreate( consuming_task, ( const signed char * const ) t1[3].name, configMINIMAL_STACK_SIZE, NULL, MEDIUM_HIGH_PRIORITY, &xHandle[3] );
+    xTaskCreate( consuming_task, ( const signed char * const ) t1[4].name, configMINIMAL_STACK_SIZE, NULL, MEDIUM_LOW_PRIORITY, &xHandle[4] );
+    xTaskCreate( consuming_task, ( const signed char * const ) t1[5].name, configMINIMAL_STACK_SIZE, NULL, LOWER_PRIORITY, &xHandle[5] );
+    
     for(int i=0; i<started_tasks; i++){
-        xTaskCreate( consuming_task, ( const signed char * const ) t1[i].name, configMINIMAL_STACK_SIZE, NULL, PROC_PRIORITY, &xHandle[i] );
         vTaskSuspend(xHandle[i]);
         t1[i].state=0;
     }
@@ -95,7 +104,7 @@ void simulate(void *pvParam) {
                 t1[i].state=2;
             }
             if ((tman_tick%t1[i].period) == t1[i].phase) {
-                t1[i].executed = 0;
+                t1[i].prec_executed = 0;
             }
             if (tman_tick == close_tick)
                 TMAN_CloseInternal();
@@ -114,10 +123,10 @@ void simulate(void *pvParam) {
                             if(t1[k].state==2 || t1[k].state==1){
                                 t1[i].state=1;
                                 // printf("%s espera porque tem precedencias %s\n", t1[i].name, t1[k].name);
-                            } else if(t1[k].executed == 1) {
+                            } else if(t1[k].prec_executed == 1) {
                                 t1[i].state = 2;
                                 vTaskResume(xHandle[i] );
-                            } else if (t1[k].executed == 0) {
+                            } else if (t1[k].prec_executed == 0) {
                                 t1[i].state = 1;
                             }
                         }
@@ -127,7 +136,7 @@ void simulate(void *pvParam) {
                 else if((t1[i].state==1)){
                     for(int k=0; k<started_tasks;k++){
                         if(strcmp(t1[i].prec, t1[k].name) == 0){
-                            if(t1[k].executed == 1){
+                            if(t1[k].prec_executed == 1){
                                 t1[i].state=2;
                                 // printf("%s ja nao precisa  %s\n", t1[i].name, t1[k].name);
                                 vTaskResume(xHandle[i] );
@@ -190,13 +199,10 @@ void printing_queue(void *pvParam) {
 TMAN TMAN_Init(int ticks_tman){
     
     TMAN tm;
-    tm.nTasksCreated=0;
-    tm.nTasksDeleted=0;
-    tm.nTasksActive=0;
     tick = ticks_tman;
     tm.maxTasks=MAX_TASKS;
     tm.taskId=0;
-    xTaskCreate( simulate, ( const signed char * const ) "ticking", configMINIMAL_STACK_SIZE, NULL, HIGHER_PRIORITY, NULL );
+    xTaskCreate( scheduler, ( const signed char * const ) "ticking", configMINIMAL_STACK_SIZE, NULL, HIGHER_PRIORITY, NULL );
     xTaskCreate( printing_queue, ( const signed char * const ) "printing", configMINIMAL_STACK_SIZE, NULL, LOWER_PRIORITY, NULL );
     return tm;
 }
@@ -217,7 +223,6 @@ void TMAN_CloseInternal(void){
 
 TMAN TMAN_TaskAdd(TMAN t, char *name){
     TASK tas;
-    t.nTasksCreated++;
     tas.name = name;
     tas.period=-1;
     tas.deadline=-1;
@@ -231,20 +236,6 @@ TMAN TMAN_TaskAdd(TMAN t, char *name){
     return t;
 }
 
-TMAN TMAN_TaskDelete(TMAN t, char *namec){
-    for(int i = 0; i<t.maxTasks;i++){
-        if (strcmp(namec, t.tasks[i].name)==0){
-            t.tasks[i].period=-1;
-            t.tasks[i].deadline=-1;
-            t.tasks[i].phase=-1;
-            t.tasks[i].name="(null)";
-            break;
-        }
-    }
-    t.nTasksDeleted++;
-    return t;
-}
-
 void TMAN_TaskStats(int tick_s) {
     stats_tick = tick_s;
 }
@@ -255,7 +246,7 @@ void TMAN_TaskStatsInternal(int task_id) {
 
 void TMAN_TaskWaitPeriod(int tar) {
     t1[tar].state = 0;
-    t1[tar].executed = 1;
+    t1[tar].prec_executed = 1;
     t1[tar].activations++;
     if (t1[tar].executed_once == 0)
         t1[tar].executed_once = 1;
@@ -277,13 +268,20 @@ TMAN TMAN_TaskRegisterAttributes(TMAN t, int period, int phase, int deadline, ch
             t.tasks[i].period=period;
             t.tasks[i].deadline=deadline;
             t.tasks[i].phase=phase;
-            t.tasks[i].executed = 0;
+            t.tasks[i].prec_executed = 0;
             t.tasks[i].executed_once = 0;
             t.tasks[i].activations = 0;
             t.tasks[i].deadlines_missed = 0;
             if (strcmp(prec_task, "") != 0){
                 t.tasks[i].prec_signal = 1;
                 t.tasks[i].prec = prec_task;
+                for(int j = 0; j<t.maxTasks;j++){
+                    if (strcmp(prec_task, t.tasks[j].name) == 0){
+                        if(t.tasks[i].period<t.tasks[j].period)
+                            t.tasks[i].period=t.tasks[j].period;
+                            t.tasks[i].phase=t.tasks[j].phase;
+                    }
+                }
             }
             break;
         }
@@ -322,7 +320,7 @@ int mainTman( void )
     for(int i=0; i<MAX_TASKS ;i++){
         xHandle[i]=NULL;
     }
-    TMAN tm = TMAN_Init(1000);
+    TMAN tm = TMAN_Init(100);
     TASK task1 = {80,90,12};
     printf("\n\nStarting TMAN simulation\n");
     tm=TMAN_TaskAdd(tm, "A");
@@ -332,12 +330,12 @@ int mainTman( void )
     tm=TMAN_TaskAdd(tm, "E");
     tm=TMAN_TaskAdd(tm, "F");
     printf("Task added\n");
-    tm=TMAN_TaskRegisterAttributes(tm, 4, 3, 4,"A","B");
-    tm=TMAN_TaskRegisterAttributes(tm, 4, 3, 4,"B","C");
-    tm=TMAN_TaskRegisterAttributes(tm, 4, 3, 4,"C","");
-    tm=TMAN_TaskRegisterAttributes(tm, 4, 3, 4,"D","A");
-    tm=TMAN_TaskRegisterAttributes(tm, 4, 3, 4,"E","D");
-    tm=TMAN_TaskRegisterAttributes(tm, 4, 3, 4,"F","E");
+    tm=TMAN_TaskRegisterAttributes(tm, 1, 0, 400,"A","");
+    tm=TMAN_TaskRegisterAttributes(tm, 1, 0, 400,"B","");
+    tm=TMAN_TaskRegisterAttributes(tm, 2, 1, 400,"D","");
+    tm=TMAN_TaskRegisterAttributes(tm, 5, 2, 400,"E","");
+    tm=TMAN_TaskRegisterAttributes(tm, 2, 0, 400,"C","E");
+    tm=TMAN_TaskRegisterAttributes(tm, 10, 0, 400,"F","");
     printf("Attr added\n");
     printf("%s: Period: %d, Phase: %d\n", tm.tasks[0].name, tm.tasks[0].period, tm.tasks[0].phase);
     printf("%s: Period: %d, Phase: %d\n", tm.tasks[1].name, tm.tasks[1].period, tm.tasks[1].phase);
